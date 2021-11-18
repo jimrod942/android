@@ -80,17 +80,23 @@ import com.owncloud.android.ui.notifications.NotificationUtils;
 import com.owncloud.android.utils.ErrorMessageAdapter;
 import com.owncloud.android.utils.theme.ThemeColorUtils;
 
+import net.fortuna.ical4j.model.DateTime;
+
 import java.io.File;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import dagger.android.AndroidInjection;
@@ -206,6 +212,8 @@ public class FileUploader extends Service
     private NotificationManager mNotificationManager;
     private NotificationCompat.Builder mNotificationBuilder;
     private int mLastPercent;
+
+    private SortedSet<Long> failTimestamps = new TreeSet<>();
 
 
     @Override
@@ -853,9 +861,31 @@ public class FileUploader extends Service
 
             mNotificationBuilder.setContentText(content);
             if (!uploadResult.isSuccess()) {
-                mNotificationManager.notify((new SecureRandom()).nextInt(), mNotificationBuilder.build());
+                if (hasMultipleFails()) {
+                    mNotificationManager.notify((new SecureRandom()).nextInt(), mNotificationBuilder.build());
+                }
             }
 
+        }
+    }
+
+    /**
+     * Checks whether an upload fail has occurred 3 times over a 30 seconds interval
+     *
+     * @return boolean whether upload has failed 3 times in 30 seconds
+     */
+    private boolean hasMultipleFails() {
+        final int threshold = 3;
+        final long failTimeout = TimeUnit.SECONDS.toMillis(30);
+        final long now = System.currentTimeMillis();
+
+        failTimestamps = failTimestamps.tailSet(now - failTimeout);
+        failTimestamps.add(now);
+
+        if (failTimestamps.size() > threshold) {
+            return true;
+        } else {
+            return false;
         }
     }
 
